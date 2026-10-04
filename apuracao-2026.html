@@ -77,6 +77,20 @@ select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--lin
 footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
 footer a{color:inherit}
 .refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.overview{padding-bottom:14px}
+.overview-title{font-size:.85rem;color:var(--soft)}
+.overview-lead{font-size:1.35rem;font-weight:800;margin:4px 0}
+.overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.overview-stat{padding:10px;background:var(--track);border-radius:7px}
+.overview-stat strong{display:block;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.overview-stat span{color:var(--soft);font-size:.8rem}
+.gap{margin:12px 0;padding:10px;background:var(--track);border-radius:7px;font-size:.9rem}
+.cargo-tabs{display:flex;gap:6px;margin-bottom:14px}
+.cargo-tabs button{flex:1;padding:10px 4px;font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;cursor:pointer}
+.cargo-tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.region-toggle{width:100%;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;font:inherit;cursor:pointer;margin-bottom:8px}
+details.explanation{font-size:.85rem;color:var(--soft);margin-top:10px}
+details.explanation summary{cursor:pointer;padding:6px 0}
 .senators{padding-bottom:14px}
 .senators .sub:last-child{margin-top:12px}
 .region-group{margin-bottom:26px}
@@ -136,7 +150,7 @@ const REGIONS = [
   {nome:"Sudeste",ufs:["es","mg","rj","sp"]},
   {nome:"Sul",ufs:["pr","rs","sc"]}
 ];
-const state = { br:null, mg:{gov:null,sen:null}, uf:{}, open:new Set(), tab:"br" };
+const state = { br:null, mg:{gov:null,sen:null}, uf:{}, open:new Set(), tab:"br", mgTab:"sen", regions:new Set() };
 
 const url = (ele, uf, cargo) => `${BASE}/${ele}/dados/${uf}/${uf}-c${cargo}-e00${ele}-u.json`;
 const num = s => parseFloat(String(s||"0").replace(",", ".")) || 0;
@@ -203,25 +217,52 @@ function meter(p, cap){
 }
 
 
-function runoffPanel(d, title){
+
+const percent = n => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+function gapPanel(d, senate=false){
   if(!d || d.error) return "";
-  const leader = d.cands[0];
-  if(!leader || !d.cands.some(c => c.votos > 0)) return `<div class="block scenario"><h2>Vai ter segundo turno? · ${esc(title)}</h2><div class="sub">Aguardando votos válidos divulgados.</div></div>`;
-  const pct = leader.pct;
-  const above = pct > 50;
-  const pp = Math.abs(pct - 50).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4});
-  const p = pct.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4});
+  const valid = d.cands.filter(c => c.valido !== false);
+  const a = valid[senate ? 1 : 0], b = valid[senate ? 2 : 1];
+  if(!a || !b || !valid.some(c=>c.votos>0)) return "";
+  const gap = a.votos - b.votos;
+  return `<div class="gap"><strong>${senate ? "Disputa pela segunda vaga" : "Vantagem entre 1º e 2º"}:</strong><br>
+    ${gap === 0 ? esc(a.nome) + " e " + esc(b.nome) + " estão empatados em votos." : esc(a.nome) + " tem " + fmt(gap) + " votos de vantagem sobre " + esc(b.nome) + " (" + percent(Math.max(0,a.pct-b.pct)) + " pontos percentuais)."}
+  </div>`;
+}
+function overview(d,title,senate=false){
+  if(!d || d.error) return "";
+  const c = d.cands.filter(c=>c.valido !== false);
+  if(!c.length || !c.some(k=>k.votos>0)) return "";
+  const leaders = c.filter(k=>k.votos === c[0].votos);
+  const lead = leaders.length > 1 ? "Empate na liderança" : esc(c[0].nome);
+  return `<div class="block overview"><div class="overview-title">${esc(title)} · Resumo da parcial</div>
+    <div class="overview-lead">${lead}</div>
+    <div class="sub">${leaders.length > 1 ? leaders.map(k=>esc(k.nome)).join(" · ") : "Líder com " + percent(c[0].pct) + "% dos votos válidos"}</div>
+    <div class="overview-grid">
+      <div class="overview-stat"><strong>${percent(d.apurado)}%</strong><span>das seções totalizadas</span></div>
+      <div class="overview-stat"><strong>${fmt(c[0].votos)}</strong><span>votos do primeiro colocado</span></div>
+    </div>
+    ${gapPanel(d,senate)}
+    <div class="sub"><strong>Dados do TSE:</strong> ${esc(d.hora)}${d.stale ? " · Atualização falhou; consulta anterior." : ""}</div>
+  </div>`;
+}
+function runoffPanel(d,title){
+  if(!d || d.error) return "";
+  const leader = d.cands.find(c=>c.valido !== false);
+  if(!leader || !d.cands.some(c=>c.valido !== false && c.votos > 0)) return `<div class="block scenario"><h2>Vai ter segundo turno? · ${esc(title)}</h2><div class="sub">Aguardando votos válidos divulgados.</div></div>`;
+  const pct = leader.pct, above = pct > 50;
   return `<div class="block scenario">
     <h2>Vai ter segundo turno? · ${esc(title)}</h2>
     <div class="scenario-result">${above ? "Líder acima de 50% na parcial" : "Nenhum candidato acima de 50% na parcial"}</div>
-    <div class="sub">${esc(leader.nome)}: <strong>${p}%</strong> dos votos válidos; ${pp} ponto(s) percentual(is) ${above ? "acima" : pct < 50 ? "abaixo" : "de distância"} do limite de 50%.</div>
+    <div class="sub">${esc(leader.nome)}: <strong>${percent(pct)}%</strong> · ${Math.abs(pct-50).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4})} ponto(s) percentual(is) ${above ? "acima" : pct < 50 ? "abaixo" : "de distância"} de 50%.</div>
     <div class="threshold" aria-hidden="true"><div class="threshold-fill" style="width:${Math.max(0,Math.min(100,pct))}%"></div><span class="threshold-mark"></span></div>
     <div class="threshold-labels"><span>0%</span><span>50% dos votos</span><span>100%</span></div>
-    <p>${above ? "Se esse percentual for mantido no resultado final, a disputa será decidida no primeiro turno." : "Se nenhum candidato superar 50% no resultado final, haverá segundo turno."}</p>
-    <div class="sub"><strong>Probabilidade de segundo turno: não estimada.</strong> Os votos ainda não totalizados podem mudar esse cenário. A ordem da apuração varia entre regiões; o percentual parcial não é uma amostra aleatória do país ou do estado.</div>
-    <div class="sub">Uma probabilidade numérica exige um modelo validado para os votos restantes. Este painel mostra a condição atual, sem prever o resultado.</div>
-    <div class="sub">${d.apurado.toFixed(2).replace(".",",")}% das seções totalizadas · Dados de ${esc(d.hora)}${d.stale ? " · Consulta anterior; atualização falhou." : ""}</div>
-    <div class="sub">É necessário mais de 50% dos votos válidos para vencer no primeiro turno. Brancos e nulos ficam fora desse cálculo. Confira a confirmação no <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">TSE</a>.</div>
+    <div class="sub">${above ? "Se mantiver esse percentual até o resultado final, vence no primeiro turno." : "Se ninguém superar 50% no resultado final, haverá segundo turno."}</div>
+    <details class="explanation"><summary>Entenda o cálculo</summary>
+      <p><strong>Probabilidade de segundo turno: não estimada.</strong> A ordem da apuração varia entre regiões. O percentual parcial não é uma amostra aleatória e os votos restantes podem mudar o cenário.</p>
+      <p>Uma probabilidade numérica exige um modelo validado. É necessário mais de 50% dos votos válidos para vencer no primeiro turno; brancos e nulos ficam fora do cálculo.</p>
+      <p>Este painel mostra a condição atual. Confira a confirmação no <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">TSE</a>.</p>
+    </details>
   </div>`;
 }
 
@@ -230,8 +271,8 @@ function renderBR(){
   const d = state.br;
   if(!d){ el.innerHTML = '<div class="err">Buscando dados do TSE…</div>'; return; }
   if(d.error){ el.innerHTML = `<div class="err">${esc(d.error)}</div>`; return; }
-  el.innerHTML = notice(d) + meter(d.apurado, "Presidente, Brasil") + runoffPanel(d, "Presidente") +
-    `<div class="block"><h2>Presidente</h2><div class="sub">Votos válidos, totalização das ${esc(d.hora)}</div>${candRows(d)}</div>`;
+  el.innerHTML = notice(d) + overview(d, "Presidente · Brasil") +
+    `<div class="block"><h2>Presidente</h2><div class="sub">Votos válidos, totalização das ${esc(d.hora)}</div>${candRows(d)}</div>` + runoffPanel(d, "Presidente");
 }
 
 
@@ -240,9 +281,12 @@ function renderSenators(d){
   if(!d) return `<div class="block"><h2>${title}</h2><div class="err">Buscando dados do TSE…</div></div>`;
   if(d.error) return `<div class="block"><h2>${title}</h2><div class="err">${esc(d.error)}</div></div>`;
   const hasVotes = d.cands.some(c => c.votos > 0);
-  const ranked = { ...d, cands:d.cands.map((c,i) => ({
-    ...c, st: c.eleito || c.st ? c.st : hasVotes && i < 2 ? (i+1) + "º na parcial" : ""
-  })) };
+  const valid = d.cands.filter(c=>c.valido !== false);
+  const ranked = { ...d, cands:d.cands.map(c => {
+    const rank = 1 + valid.filter(other=>other.votos>c.votos).length;
+    const tied = valid.filter(other=>other.votos===c.votos).length > 1;
+    return {...c,st:c.eleito || c.st ? c.st : hasVotes && c.valido !== false && rank <= 2 ? rank + "º na parcial" + (tied ? " · empate" : "") : ""};
+  }) };
   return `<div class="block senators"><h2>${title}</h2>
     ${notice(d)}
     <div class="sub"><strong>2 vagas em disputa</strong> · ${d.apurado.toFixed(2).replace(".",",")}% das seções totalizadas</div>
@@ -253,20 +297,23 @@ function renderSenators(d){
   </div>`;
 }
 
+
 function renderMG(){
   const el = document.getElementById("tab-mg");
-  const {gov, sen} = state.mg;
-  const pres = state.uf.mg;
-  let h = "";
-  h += renderSenators(sen);
-  if(gov && !gov.error) h += meter(gov.apurado, "Governador, Minas Gerais");
-  const blk = (t, d, n) => !d ? `<div class="block"><h2>${t}</h2><div class="err">Buscando…</div></div>`
-    : d.error ? `<div class="block"><h2>${t}</h2><div class="err">${esc(d.error)}</div></div>`
-    : `<div class="block"><h2>${t}</h2>${notice(d)}<div class="sub">Totalização das ${esc(d.hora)}</div>${t === "Senador" ? '<div class="sub">2 vagas em disputa. Percentual sobre votos, não sobre eleitores.</div>' : ""}${candRows(d, n)}</div>`;
-  h += runoffPanel(gov, "Governador de Minas") + blk("Governador", gov) + blk("Presidente em Minas", pres);
+  const tabs = [{key:"gov",nome:"Governador"},{key:"sen",nome:"Senado"},{key:"pres",nome:"Presidente"}];
+  const key = state.mgTab;
+  const title = tabs.find(t=>t.key===key).nome;
+  const d = key === "pres" ? state.uf.mg : state.mg[key];
+  let h = `<div class="cargo-tabs" aria-label="Cargo em Minas">${tabs.map(t=>`<button type="button" data-cargo="${t.key}" aria-pressed="${key===t.key}">${t.nome}</button>`).join("")}</div>`;
+  if(!d) h += '<div class="err">Buscando dados do TSE…</div>';
+  else if(d.error) h += `<div class="err">${esc(d.error)}</div>`;
+  else {
+    h += notice(d) + overview(d,title + " · Minas Gerais",key==="sen");
+    h += key === "sen" ? renderSenators(d) : `<div class="block"><h2>${title} em Minas</h2><div class="sub">Dados de ${esc(d.hora)}</div>${candRows(d)}</div>`;
+    if(key === "gov") h += runoffPanel(d,"Governador de Minas");
+  }
   el.innerHTML = h;
 }
-
 
 function aggregateRegion(region){
   const totals = new Map();
@@ -334,7 +381,7 @@ function renderUF(){
     return UFS[a].localeCompare(UFS[b], "pt-BR");
   };
   document.getElementById("uf-list").innerHTML = REGIONS.map(region =>
-    `<section class="region-group"><h2 class="region-title">${region.nome}</h2>${regionSummary(region)}${[...region.ufs].sort(sorter).map(stateCard).join("")}</section>`
+    `<section class="region-group"><h2 class="region-title">${region.nome}</h2>${regionSummary(region)}${gapPanel(aggregateRegion(region))}<button type="button" class="region-toggle" data-region="${region.nome}" aria-expanded="${state.regions.has(region.nome)}">${state.regions.has(region.nome) ? "Ocultar" : "Ver"} estados · ${region.ufs.length}</button><div ${state.regions.has(region.nome) ? "" : "hidden"}>${[...region.ufs].sort(sorter).map(stateCard).join("")}</div></section>`
   ).join("") + '<section class="region-group"><h2 class="region-title">Exterior</h2><div class="notice">Votos no exterior são exibidos separadamente das cinco regiões.</div>' + stateCard("zz") + '</section>';
 }
 
@@ -348,7 +395,7 @@ function setBusy(b){
     const items = [state.br, state.mg.gov, state.mg.sen, ...Object.values(state.uf)].filter(Boolean);
     const ok = items.some(d => !d.error && !d.stale);
     const failed = items.some(d => d.error || d.stale);
-    document.getElementById("stamp").textContent = !ok ? "TSE indisponível · tentando novamente" : failed ? "Algumas consultas falharam · nova tentativa automática" : "Consultado às " + new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"});
+    document.getElementById("stamp").textContent = !ok ? "TSE indisponível · tentando novamente" : failed ? "Algumas consultas falharam · nova tentativa automática" : "Consulta concluída às " + new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"});
   }
 }
 
@@ -379,25 +426,45 @@ async function loadStates(){
   }));
 }
 
-let cycle = 0;
+
 let loading = false;
+let statesLoading = false;
 async function tick(){
   if(loading) return;
   loading = true;
   setBusy(true);
-  try {
-  await loadMain();
-  if(cycle % 2 === 0) await loadStates(); // estados a cada 2 minutos
-  cycle++;
-  } finally { loading = false; setBusy(false); }
+  try { await loadMain(); }
+  finally { loading = false; setBusy(statesLoading); }
 }
+async function tickStates(){
+  if(statesLoading) return;
+  statesLoading = true;
+  setBusy(true);
+  try { await loadStates(); }
+  finally { statesLoading = false; setBusy(loading); }
+}
+function refreshAll(){ tick(); tickStates(); }
 
 document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   ["br","uf","mg"].forEach(t => document.getElementById("tab-"+t).hidden = t !== b.dataset.tab);
 }));
 document.getElementById("ord").addEventListener("change", renderUF);
+document.getElementById("tab-mg").addEventListener("click", e => {
+  const button = e.target.closest("[data-cargo]");
+  if(!button) return;
+  state.mgTab = button.dataset.cargo;
+  renderMG();
+});
 const toggle = e => {
+  const region = e.target.closest("[data-region]");
+  if(region){
+    const name = region.dataset.region;
+    state.regions.has(name) ? state.regions.delete(name) : state.regions.add(name);
+    renderUF();
+    document.querySelectorAll("[data-region]").forEach(b=>{if(b.dataset.region===name) b.focus();});
+    return;
+  }
   const c = e.target.closest(".uf"); if(!c) return;
   const k = c.dataset.uf; state.open.has(k) ? state.open.delete(k) : state.open.add(k); renderUF();
 };
@@ -405,10 +472,11 @@ document.getElementById("uf-list").addEventListener("click", toggle);
 document.getElementById("uf-list").addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggle(e); } });
 
 render();
-tick();
+refreshAll();
 setInterval(tick, 60000);
-document.getElementById("refresh").addEventListener("click", () => { if(!loading){ cycle = 0; tick(); } });
-document.addEventListener("visibilitychange", () => { if(!document.hidden) tick(); });
+setInterval(tickStates, 120000);
+document.getElementById("refresh").addEventListener("click", refreshAll);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshAll(); });
 </script>
 </body>
 </html>
