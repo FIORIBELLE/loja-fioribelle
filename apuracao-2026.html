@@ -77,6 +77,8 @@ select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--lin
 footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
 footer a{color:inherit}
 .refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.senators{padding-bottom:14px}
+.senators .sub:last-child{margin-top:12px}
 .region-group{margin-bottom:26px}
 .region-title{font-size:1.3rem;margin:20px 0 8px}
 .region-summary{padding-bottom:14px}
@@ -232,16 +234,36 @@ function renderBR(){
     `<div class="block"><h2>Presidente</h2><div class="sub">Votos válidos, totalização das ${esc(d.hora)}</div>${candRows(d)}</div>`;
 }
 
+
+function renderSenators(d){
+  const title = "Senadores de Minas";
+  if(!d) return `<div class="block"><h2>${title}</h2><div class="err">Buscando dados do TSE…</div></div>`;
+  if(d.error) return `<div class="block"><h2>${title}</h2><div class="err">${esc(d.error)}</div></div>`;
+  const hasVotes = d.cands.some(c => c.votos > 0);
+  const ranked = { ...d, cands:d.cands.map((c,i) => ({
+    ...c, st: c.eleito || c.st ? c.st : hasVotes && i < 2 ? (i+1) + "º na parcial" : ""
+  })) };
+  return `<div class="block senators"><h2>${title}</h2>
+    ${notice(d)}
+    <div class="sub"><strong>2 vagas em disputa</strong> · ${d.apurado.toFixed(2).replace(".",",")}% das seções totalizadas</div>
+    <div class="sub">Dados de ${esc(d.hora)} · Ordenado do mais votado ao menos votado.</div>
+    <div class="sub">Os dois primeiros estão em destaque na parcial. A posição pode mudar até o fim da apuração; a confirmação de eleição é do TSE.</div>
+    ${candRows(ranked)}
+    <div class="sub">Cada eleitor pode votar em dois candidatos ao Senado. Os percentuais são sobre votos válidos, não sobre eleitores. Não há segundo turno para senador.</div>
+  </div>`;
+}
+
 function renderMG(){
   const el = document.getElementById("tab-mg");
   const {gov, sen} = state.mg;
   const pres = state.uf.mg;
   let h = "";
-  if(gov && !gov.error) h += meter(gov.apurado, "Minas Gerais");
+  h += renderSenators(sen);
+  if(gov && !gov.error) h += meter(gov.apurado, "Governador, Minas Gerais");
   const blk = (t, d, n) => !d ? `<div class="block"><h2>${t}</h2><div class="err">Buscando…</div></div>`
     : d.error ? `<div class="block"><h2>${t}</h2><div class="err">${esc(d.error)}</div></div>`
     : `<div class="block"><h2>${t}</h2>${notice(d)}<div class="sub">Totalização das ${esc(d.hora)}</div>${t === "Senador" ? '<div class="sub">2 vagas em disputa. Percentual sobre votos, não sobre eleitores.</div>' : ""}${candRows(d, n)}</div>`;
-  h += runoffPanel(gov, "Governador de Minas") + blk("Governador", gov) + blk("Senador", sen) + blk("Presidente em Minas", pres);
+  h += runoffPanel(gov, "Governador de Minas") + blk("Governador", gov) + blk("Presidente em Minas", pres);
   el.innerHTML = h;
 }
 
