@@ -76,7 +76,11 @@ select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--lin
 .err{color:var(--soft);font-size:.9rem;padding:12px 0}
 footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
 footer a{color:inherit}
-.refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.actions{display:flex;gap:8px;justify-content:center;margin:0 0 12px}
+.refresh,.share{padding:10px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.share{background:var(--ink);color:var(--bg);font-weight:700}
+.share[disabled],.refresh[disabled]{opacity:.55;cursor:default}
+.share-note{min-height:1.3em;color:var(--soft);font-size:.8rem;text-align:center;margin:-4px 0 10px}
 .history{padding-bottom:14px}
 .history-change{font-weight:700;margin:8px 0}
 .history-chart{display:block;width:100%;height:auto;margin:10px 0;color:var(--soft)}
@@ -142,7 +146,11 @@ details.explanation summary{cursor:pointer;padding:6px 0}
   </section>
   <section id="tab-mg" hidden></section>
 
-  <button class="refresh" id="refresh" type="button">Atualizar agora</button>
+  <div class="actions">
+    <button class="refresh" id="refresh" type="button">Atualizar agora</button>
+    <button class="share" id="share" type="button" disabled>Compartilhar resumo</button>
+  </div>
+  <div class="share-note" id="share-note" role="status" aria-live="polite"></div>
   <footer>Painel independente com dados do <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">TSE</a>. Brasil e Minas: consultas a cada minuto; estados: a cada 2 minutos. Horários de Brasília. Parcial não é resultado final.</footer>
 </div>
 
@@ -495,7 +503,84 @@ function renderUF(){
   ).join("") + '<section class="region-group"><h2 class="region-title">Exterior</h2><div class="notice">Votos no exterior são exibidos separadamente das cinco regiões.</div>' + stateCard("zz") + '</section>';
 }
 
-function render(){ renderBR(); renderUF(); renderMG(); }
+
+function topLines(d,limit){
+  if(!d || d.error) return [];
+  return d.cands.filter(c=>c.valido !== false && c.votos>0).slice(0,limit).map((c,i)=>
+    (i+1)+"º "+c.nome+" ("+c.part+"): "+percent(c.pct)+"% · "+fmt(c.votos)+" votos"
+  );
+}
+function regionLeaderLines(){
+  return REGIONS.map(region=>{
+    const d=aggregateRegion(region), a=d.cands[0];
+    if(!a || !d.validVotes) return region.nome+": aguardando dados";
+    const suffix=d.received===region.ufs.length ? "" : " · "+d.received+"/"+region.ufs.length+" estados";
+    return region.nome+": "+a.nome+" "+percent(a.pct)+"%"+suffix;
+  });
+}
+function shareSummary(){
+  const br=state.br, gov=state.mg.gov, sen=state.mg.sen;
+  if(!br || br.error) return "";
+  const leader=br.cands.find(c=>c.valido !== false && c.votos>0);
+  const runoff=leader ? (leader.pct>50
+    ? "Líder acima de 50% na parcial; se mantiver, vence no 1º turno."
+    : "Nenhum candidato acima de 50% na parcial; se isso continuar, haverá 2º turno.") : "Aguardando votos.";
+  const lines=[
+    "APURAÇÃO 2026 · PARCIAL",
+    "",
+    "PRESIDENTE · BRASIL",
+    ...topLines(br,2),
+    "Apuração: "+percent(br.apurado)+"% das seções",
+    runoff,
+    "Dados do TSE: "+br.hora,
+    ""
+  ];
+  if(gov && !gov.error){
+    lines.push("GOVERNADOR · MINAS",...topLines(gov,2),"Apuração: "+percent(gov.apurado)+"% das seções","Dados do TSE: "+gov.hora,"");
+  }
+  if(sen && !sen.error){
+    lines.push("SENADO · MINAS · 2 VAGAS",...topLines(sen,3),"Apuração: "+percent(sen.apurado)+"% das seções","Dados do TSE: "+sen.hora,"");
+  }
+  lines.push("LÍDER POR REGIÃO",...regionLeaderLines(),"","Resultado parcial. Fonte: TSE",canonicalURL());
+  return lines.join("\n");
+}
+function canonicalURL(){
+  return location.origin && location.origin!=="null"
+    ? location.origin+location.pathname
+    : "https://fioribelle.github.io/loja-fioribelle/apuracao-2026.html";
+}
+async function shareResults(){
+  const text=shareSummary(), note=document.getElementById("share-note");
+  if(!text) return;
+  const data={title:"Apuração 2026 · Parcial",text};
+  try {
+    if(navigator.share){
+      await navigator.share(data);
+      note.textContent="Resumo aberto para compartilhamento.";
+    } else {
+      const url="https://wa.me/?text="+encodeURIComponent(text);
+      const win=window.open(url,"_blank","noopener,noreferrer");
+      if(!win){
+        await navigator.clipboard.writeText(text);
+        note.textContent="Resumo copiado. Cole no WhatsApp.";
+      } else note.textContent="WhatsApp aberto com o resumo.";
+    }
+  } catch(e){
+    if(e.name==="AbortError") return;
+    try {
+      await navigator.clipboard.writeText(text);
+      note.textContent="Resumo copiado. Cole no WhatsApp.";
+    } catch(_){
+      note.textContent="Não foi possível compartilhar neste navegador.";
+    }
+  }
+}
+function updateShareButton(){
+  const button=document.getElementById("share");
+  button.disabled=!state.br || !!state.br.error || !state.br.cands?.some(c=>c.votos>0);
+}
+
+function render(){ renderBR(); renderUF(); renderMG(); updateShareButton(); }
 
 function setBusy(b){
   document.getElementById("dot").classList.toggle("busy", b);
@@ -590,6 +675,7 @@ refreshAll();
 setInterval(tick, 60000);
 setInterval(tickStates, 120000);
 document.getElementById("refresh").addEventListener("click", refreshAll);
+document.getElementById("share").addEventListener("click", shareResults);
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshAll(); });
 </script>
 </body>
