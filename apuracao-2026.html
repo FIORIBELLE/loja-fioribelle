@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apuração 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF0F3; --card:#FFFFFF; --ink:#18212E; --soft:#5B6878; --line:#D5DBE2;
+  --bar:#2C5A86; --bar2:#9AAFC4; --track:#E3E8EE; --live:#C98A00;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121821; --card:#1B2330; --ink:#E8EDF3; --soft:#9AA7B6; --line:#2C3644;
+    --bar:#6FA3D6; --bar2:#4A5D73; --track:#263040; --live:#E6B33A;
+  }
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:4px 0 14px}
+h1{font-size:1.6rem;font-weight:800;font-stretch:80%;margin:0;letter-spacing:-.01em}
+.status{font-size:.85rem;color:var(--soft);text-align:right}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--live);margin-right:6px;vertical-align:middle}
+.dot.busy{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){.dot.busy{animation:none}}
+nav{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px;margin-bottom:16px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+nav button{flex:1;border:0;background:transparent;color:var(--soft);font:inherit;font-weight:600;padding:10px 6px;border-radius:7px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+button:focus-visible,select:focus-visible,.uf:focus-visible{outline:3px solid var(--live);outline-offset:2px}
+
+/* medidor de apuração: o elemento principal */
+.meter{margin:0 0 18px}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline}
+.meter-num{font-size:3.2rem;font-weight:800;font-stretch:75%;line-height:1;font-variant-numeric:tabular-nums}
+.meter-num small{font-size:1.2rem;font-weight:600}
+.meter-cap{color:var(--soft);font-size:.9rem;text-align:right}
+.meter-track{height:14px;background:var(--track);border-radius:3px;margin-top:8px;overflow:hidden}
+.meter-fill{height:100%;background:var(--ink);transition:width .6s ease}
+
+.block{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 6px;margin-bottom:14px}
+.block h2{font-size:1.1rem;margin:0 0 4px;font-weight:700}
+.block .sub{color:var(--soft);font-size:.85rem;margin-bottom:10px}
+.row{padding:8px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.name{font-weight:600}
+.name em{font-style:normal;color:var(--soft);font-weight:400;font-size:.85rem;margin-left:4px}
+.pct{font-weight:800;font-stretch:80%;font-size:1.15rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.votes{color:var(--soft);font-size:.8rem;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:var(--track);border-radius:2px;margin-top:5px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--bar2)}
+.row.lead .bar span{background:var(--bar)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--live);color:#1A1200;margin-left:6px}
+
+.tools{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+.tools label{font-size:.85rem;color:var(--soft)}
+select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.uf{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;padding:12px 14px}
+.uf-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.uf-name{font-weight:700}
+.uf-ap{font-size:.8rem;color:var(--soft);font-variant-numeric:tabular-nums}
+.uf-duel{margin-top:6px;font-size:.9rem;display:flex;justify-content:space-between;gap:8px}
+.uf-duel b{font-variant-numeric:tabular-nums}
+.split{display:flex;height:6px;border-radius:2px;overflow:hidden;background:var(--track);margin-top:6px}
+.split .a{background:var(--bar)} .split .b{background:var(--bar2)}
+.uf-body{margin-top:10px}
+.err{color:var(--soft);font-size:.9rem;padding:12px 0}
+footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
+footer a{color:inherit}
+.refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.notice{color:var(--soft);font-size:.85rem;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Apuração 2026</h1>
+    <div class="status" role="status"><span class="dot" id="dot"></span><span id="stamp">Carregando…</span></div>
+  </header>
+
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="br">Brasil</button>
+    <button role="tab" aria-selected="false" data-tab="uf">Estados</button>
+    <button role="tab" aria-selected="false" data-tab="mg">Minas</button>
+  </nav>
+
+  <section id="tab-br"></section>
+  <section id="tab-uf" hidden>
+    <div class="tools">
+      <label for="ord">Ordenar por</label>
+      <select id="ord">
+        <option value="nome">Nome do estado</option>
+        <option value="apurado">Mais apurado</option>
+        <option value="eleitores">Tamanho do eleitorado</option>
+      </select>
+    </div>
+    <div id="uf-list"></div>
+  </section>
+  <section id="tab-mg" hidden></section>
+
+  <button class="refresh" id="refresh" type="button">Atualizar agora</button>
+  <footer>Painel independente com dados do <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">TSE</a>. Brasil e Minas: consultas a cada minuto; estados: a cada 2 minutos. Horários de Brasília. Parcial não é resultado final.</footer>
+</div>
+
+<script>
+const BASE = "https://resultados.tse.jus.br/oficial/ele2026";
+const PRES = "6257", EST = "6259";
+const UFS = {ac:"Acre",al:"Alagoas",ap:"Amapá",am:"Amazonas",ba:"Bahia",ce:"Ceará",df:"Distrito Federal",es:"Espírito Santo",go:"Goiás",ma:"Maranhão",mt:"Mato Grosso",ms:"Mato Grosso do Sul",mg:"Minas Gerais",pa:"Pará",pb:"Paraíba",pr:"Paraná",pe:"Pernambuco",pi:"Piauí",rj:"Rio de Janeiro",rn:"Rio Grande do Norte",rs:"Rio Grande do Sul",ro:"Rondônia",rr:"Roraima",sc:"Santa Catarina",sp:"São Paulo",se:"Sergipe",to:"Tocantins",zz:"Exterior"};
+const state = { br:null, mg:{gov:null,sen:null}, uf:{}, open:new Set(), tab:"br" };
+
+const url = (ele, uf, cargo) => `${BASE}/${ele}/dados/${uf}/${uf}-c${cargo}-e00${ele}-u.json`;
+const num = s => parseFloat(String(s||"0").replace(",", ".")) || 0;
+const fmt = n => n.toLocaleString("pt-BR");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function get(u){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+  const r = await fetch(u, {cache:"no-cache", signal:controller.signal});
+  if(!r.ok) throw new Error(r.status === 429 ? "TSE limitou as consultas, tentando de novo em seguida" : "Arquivo indisponível ("+r.status+")");
+  return await r.json();
+  } catch(e) {
+    if(e.name === "AbortError") throw new Error("TSE demorou a responder. Nova tentativa automática.");
+    if(e instanceof TypeError) throw new Error("Sem conexão com o TSE. Nova tentativa automática.");
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+function parse(d){
+  if(!Array.isArray(d.carg) || !d.s) throw new Error("Resposta do TSE em formato inesperado.");
+  const cands = [];
+  (d.carg?.[0]?.agr || []).forEach(a => (a.par||[]).forEach(p => (p.cand||[]).forEach(k => {
+    cands.push({ nome:k.nmu || k.nm, part:p.sg, votos:+k.vap || 0, pct:num(k.pvapn || k.pvap), eleito:k.e === "s", st:k.st || "" });
+  })));
+  cands.sort((a,b) => b.votos - a.votos);
+  return {
+    cands,
+    apurado: num(d.s?.pstn || d.s?.pst),
+    eleitores: +(d.e?.te || 0),
+    hora: [d.dt || d.dg, d.ht || d.hg].filter(Boolean).join(" às "),
+    cargo: d.carg?.[0]?.nmn || ""
+  };
+}
+
+function candRows(list, limit){
+  const top = list.cands.slice(0, limit || list.cands.length);
+  if(!top.length) return '<div class="err">Sem votos divulgados ainda.</div>';
+  return top.map((c,i) => `
+    <div class="row${i===0?" lead":""}">
+      <div class="row-top">
+        <span class="name">${esc(c.nome)}<em>${esc(c.part)}</em>${c.eleito?'<span class="tag">Eleito</span>':(c.st && c.st!=="Eleito"?`<span class="tag">${esc(c.st)}</span>`:"")}</span>
+        <span class="pct">${c.pct.toFixed(2).replace(".",",")}%</span>
+      </div>
+      <div class="votes">${fmt(c.votos)} votos</div>
+      <div class="bar"><span style="width:${Math.min(100,c.pct)}%"></span></div>
+    </div>`).join("");
+}
+
+const notice = d => d?.stale ? `<div class="notice">${esc(d.stale)} Exibindo a última consulta recebida.</div>` : "";
+
+function meter(p, cap){
+  return `<div class="meter">
+    <div class="meter-top">
+      <div class="meter-num">${p.toFixed(2).replace(".",",")}<small>%</small></div>
+      <div class="meter-cap">das seções apuradas<br>${esc(cap)}</div>
+    </div>
+    <div class="meter-track"><div class="meter-fill" style="width:${p}%"></div></div>
+  </div>`;
+}
+
+function renderBR(){
+  const el = document.getElementById("tab-br");
+  const d = state.br;
+  if(!d){ el.innerHTML = '<div class="err">Buscando dados do TSE…</div>'; return; }
+  if(d.error){ el.innerHTML = `<div class="err">${esc(d.error)}</div>`; return; }
+  el.innerHTML = notice(d) + meter(d.apurado, "Presidente, Brasil") +
+    `<div class="block"><h2>Presidente</h2><div class="sub">Votos válidos, totalização das ${esc(d.hora)}</div>${candRows(d)}</div>`;
+}
+
+function renderMG(){
+  const el = document.getElementById("tab-mg");
+  const {gov, sen} = state.mg;
+  const pres = state.uf.mg;
+  let h = "";
+  if(gov && !gov.error) h += meter(gov.apurado, "Minas Gerais");
+  const blk = (t, d, n) => !d ? `<div class="block"><h2>${t}</h2><div class="err">Buscando…</div></div>`
+    : d.error ? `<div class="block"><h2>${t}</h2><div class="err">${esc(d.error)}</div></div>`
+    : `<div class="block"><h2>${t}</h2>${notice(d)}<div class="sub">Totalização das ${esc(d.hora)}</div>${t === "Senador" ? '<div class="sub">2 vagas em disputa. Percentual sobre votos, não sobre eleitores.</div>' : ""}${candRows(d, n)}</div>`;
+  h += blk("Governador", gov) + blk("Senador", sen) + blk("Presidente em Minas", pres);
+  el.innerHTML = h;
+}
+
+function renderUF(){
+  const ord = document.getElementById("ord").value;
+  const keys = Object.keys(UFS);
+  keys.sort((a,b) => {
+    const A = state.uf[a], B = state.uf[b];
+    if(ord === "apurado") return (B?.apurado||0) - (A?.apurado||0);
+    if(ord === "eleitores") return (B?.eleitores||0) - (A?.eleitores||0);
+    return UFS[a].localeCompare(UFS[b], "pt-BR");
+  });
+  document.getElementById("uf-list").innerHTML = keys.map(k => {
+    const d = state.uf[k];
+    const open = state.open.has(k);
+    let inner;
+    if(!d) inner = '<div class="uf-ap">Buscando…</div>';
+    else if(d.error) inner = `<div class="uf-ap">${esc(d.error)}</div>`;
+    else {
+      const [a, b] = d.cands;
+      inner = a ? `
+        <div class="uf-duel"><span>${esc(a.nome)} <b>${a.pct.toFixed(1).replace(".",",")}%</b></span>${b?`<span>${esc(b.nome)} <b>${b.pct.toFixed(1).replace(".",",")}%</b></span>`:""}</div>
+        <div class="split"><span class="a" style="width:${a.pct}%"></span>${b?`<span class="b" style="width:${b.pct}%"></span>`:""}</div>
+        ${open ? `<div class="uf-body">${candRows(d)}</div>` : ""}` : '<div class="uf-ap">Sem votos divulgados ainda.</div>';
+    }
+    return `<div class="uf" tabindex="0" role="button" aria-expanded="${open}" data-uf="${k}">
+      <div class="uf-head"><span class="uf-name">${UFS[k]}</span><span class="uf-ap">${d && !d.error ? d.apurado.toFixed(1).replace(".",",")+"% apurado" : ""}</span></div>
+      ${notice(d)}${inner}</div>`;
+  }).join("");
+}
+
+function render(){ renderBR(); renderUF(); renderMG(); }
+
+function setBusy(b){
+  document.getElementById("dot").classList.toggle("busy", b);
+  document.getElementById("refresh").disabled = b;
+  if(b) document.getElementById("stamp").textContent = "Consultando TSE…";
+  else {
+    const items = [state.br, state.mg.gov, state.mg.sen, ...Object.values(state.uf)].filter(Boolean);
+    const ok = items.some(d => !d.error && !d.stale);
+    const failed = items.some(d => d.error || d.stale);
+    document.getElementById("stamp").textContent = !ok ? "TSE indisponível · tentando novamente" : failed ? "Algumas consultas falharam · nova tentativa automática" : "Consultado às " + new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"});
+  }
+}
+
+async function update(target, key, ele, uf, cargo){
+  try { target[key] = parse(await get(url(ele,uf,cargo))); }
+  catch(e){ target[key] = target[key] && !target[key].error ? {...target[key],stale:e.message} : {error:e.message}; }
+}
+
+async function loadMain(){
+  await Promise.all([
+    update(state,"br",PRES,"br","0001"),
+    update(state.mg,"gov",EST,"mg","0003"),
+    update(state.mg,"sen",EST,"mg","0005"),
+    update(state.uf,"mg",PRES,"mg","0001")
+  ]);
+  render();
+}
+
+async function loadStates(){
+  const queue = Object.keys(UFS).filter(k => k !== "mg");
+  await Promise.all(Array.from({length:3}, async () => {
+    while(queue.length){
+      const k = queue.shift();
+      await update(state.uf,k,PRES,k,"0001");
+      renderUF();
+      await sleep(250);
+    }
+  }));
+}
+
+let cycle = 0;
+let loading = false;
+async function tick(){
+  if(loading) return;
+  loading = true;
+  setBusy(true);
+  try {
+  await loadMain();
+  if(cycle % 2 === 0) await loadStates(); // estados a cada 2 minutos
+  cycle++;
+  } finally { loading = false; setBusy(false); }
+}
+
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
+  ["br","uf","mg"].forEach(t => document.getElementById("tab-"+t).hidden = t !== b.dataset.tab);
+}));
+document.getElementById("ord").addEventListener("change", renderUF);
+const toggle = e => {
+  const c = e.target.closest(".uf"); if(!c) return;
+  const k = c.dataset.uf; state.open.has(k) ? state.open.delete(k) : state.open.add(k); renderUF();
+};
+document.getElementById("uf-list").addEventListener("click", toggle);
+document.getElementById("uf-list").addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggle(e); } });
+
+render();
+tick();
+setInterval(tick, 60000);
+document.getElementById("refresh").addEventListener("click", () => { if(!loading){ cycle = 0; tick(); } });
+document.addEventListener("visibilitychange", () => { if(!document.hidden) tick(); });
+</script>
+</body>
+</html>
