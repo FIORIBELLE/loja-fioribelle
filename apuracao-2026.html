@@ -77,6 +77,12 @@ select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--lin
 footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
 footer a{color:inherit}
 .refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.scenario{padding-bottom:14px}
+.scenario-result{font-size:1.25rem;font-weight:800;margin:8px 0}
+.threshold{position:relative;height:12px;background:var(--track);border-radius:4px;margin:12px 0 6px;overflow:hidden}
+.threshold-fill{height:100%;background:var(--bar)}
+.threshold-mark{position:absolute;left:50%;top:0;height:100%;border-left:3px solid var(--ink)}
+.threshold-labels{display:flex;justify-content:space-between;color:var(--soft);font-size:.75rem;margin-bottom:12px}
 .notice{color:var(--soft);font-size:.85rem;margin-bottom:10px}
 </style>
 </head>
@@ -179,12 +185,35 @@ function meter(p, cap){
   </div>`;
 }
 
+
+function runoffPanel(d, title){
+  if(!d || d.error) return "";
+  const leader = d.cands[0];
+  if(!leader || !d.cands.some(c => c.votos > 0)) return `<div class="block scenario"><h2>Vai ter segundo turno? · ${esc(title)}</h2><div class="sub">Aguardando votos válidos divulgados.</div></div>`;
+  const pct = leader.pct;
+  const above = pct > 50;
+  const pp = Math.abs(pct - 50).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4});
+  const p = pct.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4});
+  return `<div class="block scenario">
+    <h2>Vai ter segundo turno? · ${esc(title)}</h2>
+    <div class="scenario-result">${above ? "Líder acima de 50% na parcial" : "Nenhum candidato acima de 50% na parcial"}</div>
+    <div class="sub">${esc(leader.nome)}: <strong>${p}%</strong> dos votos válidos; ${pp} ponto(s) percentual(is) ${above ? "acima" : pct < 50 ? "abaixo" : "de distância"} do limite de 50%.</div>
+    <div class="threshold" aria-hidden="true"><div class="threshold-fill" style="width:${Math.max(0,Math.min(100,pct))}%"></div><span class="threshold-mark"></span></div>
+    <div class="threshold-labels"><span>0%</span><span>50% dos votos</span><span>100%</span></div>
+    <p>${above ? "Se esse percentual for mantido no resultado final, a disputa será decidida no primeiro turno." : "Se nenhum candidato superar 50% no resultado final, haverá segundo turno."}</p>
+    <div class="sub"><strong>Probabilidade de segundo turno: não estimada.</strong> Os votos ainda não totalizados podem mudar esse cenário. A ordem da apuração varia entre regiões; o percentual parcial não é uma amostra aleatória do país ou do estado.</div>
+    <div class="sub">Uma probabilidade numérica exige um modelo validado para os votos restantes. Este painel mostra a condição atual, sem prever o resultado.</div>
+    <div class="sub">${d.apurado.toFixed(2).replace(".",",")}% das seções totalizadas · Dados de ${esc(d.hora)}${d.stale ? " · Consulta anterior; atualização falhou." : ""}</div>
+    <div class="sub">É necessário mais de 50% dos votos válidos para vencer no primeiro turno. Brancos e nulos ficam fora desse cálculo. Confira a confirmação no <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">TSE</a>.</div>
+  </div>`;
+}
+
 function renderBR(){
   const el = document.getElementById("tab-br");
   const d = state.br;
   if(!d){ el.innerHTML = '<div class="err">Buscando dados do TSE…</div>'; return; }
   if(d.error){ el.innerHTML = `<div class="err">${esc(d.error)}</div>`; return; }
-  el.innerHTML = notice(d) + meter(d.apurado, "Presidente, Brasil") +
+  el.innerHTML = notice(d) + meter(d.apurado, "Presidente, Brasil") + runoffPanel(d, "Presidente") +
     `<div class="block"><h2>Presidente</h2><div class="sub">Votos válidos, totalização das ${esc(d.hora)}</div>${candRows(d)}</div>`;
 }
 
@@ -197,7 +226,7 @@ function renderMG(){
   const blk = (t, d, n) => !d ? `<div class="block"><h2>${t}</h2><div class="err">Buscando…</div></div>`
     : d.error ? `<div class="block"><h2>${t}</h2><div class="err">${esc(d.error)}</div></div>`
     : `<div class="block"><h2>${t}</h2>${notice(d)}<div class="sub">Totalização das ${esc(d.hora)}</div>${t === "Senador" ? '<div class="sub">2 vagas em disputa. Percentual sobre votos, não sobre eleitores.</div>' : ""}${candRows(d, n)}</div>`;
-  h += blk("Governador", gov) + blk("Senador", sen) + blk("Presidente em Minas", pres);
+  h += runoffPanel(gov, "Governador de Minas") + blk("Governador", gov) + blk("Senador", sen) + blk("Presidente em Minas", pres);
   el.innerHTML = h;
 }
 
