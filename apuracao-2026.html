@@ -77,6 +77,13 @@ select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--lin
 footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
 footer a{color:inherit}
 .refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.history{padding-bottom:14px}
+.history-change{font-weight:700;margin:8px 0}
+.history-chart{display:block;width:100%;height:auto;margin:10px 0;color:var(--soft)}
+.history-table-wrap{overflow-x:auto}
+.history-table{width:100%;border-collapse:collapse;font-size:.8rem;font-variant-numeric:tabular-nums}
+.history-table th,.history-table td{padding:8px 5px;text-align:right;border-bottom:1px solid var(--line)}
+.history-table th:first-child,.history-table td:first-child{text-align:left}
 .overview{padding-bottom:14px}
 .overview-title{font-size:.85rem;color:var(--soft)}
 .overview-lead{font-size:1.35rem;font-weight:800;margin:4px 0}
@@ -266,12 +273,114 @@ function runoffPanel(d,title){
   </div>`;
 }
 
+
+const HISTORY_KEY = "apuracao2026.history.v1";
+const HISTORY_LIMIT = 120;
+let historyPersistent = true;
+const history = readHistory();
+function sourceOrder(hora){
+  const m = String(hora||"").match(/(\d{2})\/(\d{2})\/(\d{4}).*?(\d{2}):(\d{2})(?::(\d{2}))?/);
+  return m ? Date.UTC(+m[3],+m[2]-1,+m[1],+m[4],+m[5],+(m[6]||0)) : 0;
+}
+function readHistory(){
+  const clean = {br:[],senMG:[]};
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if(!raw) return clean;
+    if(raw.length > 2000000) return clean;
+    const saved = JSON.parse(raw);
+    for(const key of Object.keys(clean)){
+      if(!Array.isArray(saved[key])) continue;
+      clean[key] = saved[key].filter(s => s && typeof s.hora === "string" &&
+        typeof s.signature === "string" && Number.isFinite(s.apurado) && s.apurado >= 0 && s.apurado <= 100 &&
+        Array.isArray(s.cands) && s.cands.length <= 100 &&
+        s.cands.every(c => c && typeof c.id === "string" && typeof c.nome === "string" &&
+          Number.isSafeInteger(c.votos) && c.votos >= 0 && Number.isFinite(c.pct) && c.pct >= 0 && c.pct <= 100)
+      ).slice(-HISTORY_LIMIT);
+    }
+  } catch(e){ historyPersistent = false; }
+  return clean;
+}
+function recordHistory(key,d){
+  if(!key || !d || d.error || d.stale) return;
+  const cands = d.cands.filter(c=>c.valido !== false).map(c=>({id:c.id,nome:c.nome,votos:c.votos,pct:c.pct}));
+  if(!cands.length || !cands.some(c=>c.votos>0)) return;
+  const signature = JSON.stringify([d.apurado,[...cands].sort((a,b)=>a.id.localeCompare(b.id)).map(c=>[c.id,c.votos,c.pct])]);
+  const last = history[key].at(-1);
+  if(last?.signature === signature) return;
+  if(last && sourceOrder(d.hora) && sourceOrder(d.hora) < sourceOrder(last.hora)) return;
+  history[key].push({hora:d.hora,apurado:d.apurado,cands,signature});
+  history[key] = history[key].slice(-HISTORY_LIMIT);
+  try { localStorage.setItem(HISTORY_KEY,JSON.stringify(history)); historyPersistent = true; }
+  catch(e){ historyPersistent = false; }
+}
+function historyPair(d,senate){
+  const c = d.cands.filter(c=>c.valido !== false);
+  return [c[senate ? 1 : 0],c[senate ? 2 : 1]];
+}
+function pairSample(s,a,b){
+  const A = s.cands.find(c=>c.id===a.id), B = s.cands.find(c=>c.id===b.id);
+  return A && B ? {...s,a:A,b:B,gap:A.votos-B.votos} : null;
+}
+function historyGraph(points,a,b){
+  if(points.length < 2) return '<div class="sub">O gráfico aparecerá quando houver dois registros diferentes do TSE.</div>';
+  const w=600,h=205,left=76,right=14,top=14,bottom=42;
+  const gaps=points.map(p=>p.gap);
+  let min=Math.min(0,...gaps),max=Math.max(0,...gaps);
+  if(min===max){min-=1;max+=1;}
+  const span=max-min, padding=span*.08;
+  min-=padding;max+=padding;
+  const times=points.map(p=>sourceOrder(p.hora));
+  const timeSpan=times.at(-1)-times[0];
+  const x=(p,i)=>left+(w-left-right)*(timeSpan>0 ? (times[i]-times[0])/timeSpan : i/(points.length-1));
+  const y=v=>top+(h-top-bottom)*(max-v)/(max-min);
+  const path=points.map((p,i)=>(i ? "L":"M")+x(p,i).toFixed(2)+","+y(p.gap).toFixed(2)).join(" ");
+  const clock=p=>p.hora.split(" às ").at(-1);
+  const short=n=>Math.abs(n)>=1000000 ? (n/1000000).toLocaleString("pt-BR",{maximumFractionDigits:1})+" mi" : Math.abs(n)>=1000 ? (n/1000).toLocaleString("pt-BR",{maximumFractionDigits:1})+" mil" : fmt(Math.round(n));
+  return `<svg class="history-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolução da vantagem em votos de ${esc(a.nome)} sobre ${esc(b.nome)}. Valores negativos indicam vantagem de ${esc(b.nome)}.">
+    <line x1="${left}" x2="${w-right}" y1="${y(0)}" y2="${y(0)}" stroke="currentColor" stroke-dasharray="4 4" opacity=".6"/>
+    ${[Math.max(...gaps),Math.min(...gaps)].filter((v,i,arr)=>v!==0 && arr.indexOf(v)===i).map(v=>`<text x="${left-8}" y="${y(v)+4}" text-anchor="end" font-size="13" fill="currentColor">${short(v)}</text>`).join("")}
+    <text x="${left-8}" y="${y(0)+4}" text-anchor="end" font-size="12" fill="currentColor">0</text>
+    <path d="${path}" fill="none" stroke="var(--bar)" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="${x(points.at(-1),points.length-1)}" cy="${y(points.at(-1).gap)}" r="4" fill="var(--bar)"/>
+    <text x="${left}" y="${h-15}" font-size="13" fill="currentColor">${esc(clock(points[0]))}</text>
+    <text x="${w-right}" y="${h-15}" text-anchor="end" font-size="13" fill="currentColor">${esc(clock(points.at(-1)))}</text>
+  </svg>`;
+}
+function historyPanel(key,d,senate=false){
+  if(!d || d.error) return "";
+  const [a,b] = historyPair(d,senate);
+  if(!a || !b) return "";
+  const points=history[key].map(s=>pairSample(s,a,b)).filter(Boolean);
+  const last=points.at(-1),previous=points.at(-2);
+  let message="Aguardando a próxima mudança nos números do TSE.";
+  if(last && previous){
+    const delta=last.gap-previous.gap;
+    message=delta===0 ? "A vantagem ficou igual ao registro anterior." : "A vantagem de "+esc(a.nome)+" sobre "+esc(b.nome)+" "+(delta>0 ? "aumentou":"diminuiu")+" "+fmt(Math.abs(delta))+" votos.";
+    const old=previous.cands.filter(c=>c.votos>0).sort((x,y)=>y.votos-x.votos);
+    if(old[senate?1:0]?.id!==a.id || old[senate?2:1]?.id!==b.id) message+=" Houve mudança de posições; a comparação usa os candidatos atuais.";
+  }
+  return `<div class="block history"><h2>${senate ? "Evolução da disputa pela segunda vaga" : "Evolução da disputa presidencial"}</h2>
+    <div class="history-change">${message}</div>
+    <div class="sub">${previous ? "Comparação entre os dados de "+esc(previous.hora)+" e "+esc(last.hora)+"." : "O registro começa quando este navegador recebe os dados."}</div>
+    <div class="sub"><strong>${esc(a.nome)} × ${esc(b.nome)}</strong> · Vantagem em votos; abaixo de zero, ${esc(b.nome)} estava à frente.</div>
+    ${historyGraph(points,a,b)}
+    <details class="explanation"><summary>Ver histórico · ${points.length} registro(s)</summary>
+      <div class="sub">Últimos 10 registros. A linha liga as consultas recebidas; não estima o que ocorreu entre elas.</div>
+      <div class="history-table-wrap"><table class="history-table"><thead><tr><th scope="col">Horário TSE</th><th scope="col">Apuração</th><th scope="col">${esc(a.nome)} (%)</th><th scope="col">${esc(b.nome)} (%)</th><th scope="col">Vantagem (votos)</th></tr></thead><tbody>
+        ${points.slice(-10).reverse().map(p=>`<tr><td>${esc(p.hora)}</td><td>${percent(p.apurado)}%</td><td>${percent(p.a.pct)}%</td><td>${percent(p.b.pct)}%</td><td>${fmt(p.gap)}</td></tr>`).join("")}
+      </tbody></table></div>
+    </details>
+    <div class="sub">${historyPersistent ? "Histórico salvo neste navegador, até 120 registros por disputa." : "Armazenamento indisponível: histórico temporário desta página."} Novos registros dependem do app aberto e das consultas; períodos sem acompanhamento ficam sem coleta.</div>
+  </div>`;
+}
+
 function renderBR(){
   const el = document.getElementById("tab-br");
   const d = state.br;
   if(!d){ el.innerHTML = '<div class="err">Buscando dados do TSE…</div>'; return; }
   if(d.error){ el.innerHTML = `<div class="err">${esc(d.error)}</div>`; return; }
-  el.innerHTML = notice(d) + overview(d, "Presidente · Brasil") +
+  el.innerHTML = notice(d) + overview(d, "Presidente · Brasil") + historyPanel("br",d) +
     `<div class="block"><h2>Presidente</h2><div class="sub">Votos válidos, totalização das ${esc(d.hora)}</div>${candRows(d)}</div>` + runoffPanel(d, "Presidente");
 }
 
@@ -309,6 +418,7 @@ function renderMG(){
   else if(d.error) h += `<div class="err">${esc(d.error)}</div>`;
   else {
     h += notice(d) + overview(d,title + " · Minas Gerais",key==="sen");
+    if(key === "sen") h += historyPanel("senMG",d,true);
     h += key === "sen" ? renderSenators(d) : `<div class="block"><h2>${title} em Minas</h2><div class="sub">Dados de ${esc(d.hora)}</div>${candRows(d)}</div>`;
     if(key === "gov") h += runoffPanel(d,"Governador de Minas");
   }
@@ -400,7 +510,11 @@ function setBusy(b){
 }
 
 async function update(target, key, ele, uf, cargo){
-  try { target[key] = parse(await get(url(ele,uf,cargo))); }
+  try {
+    target[key] = parse(await get(url(ele,uf,cargo)));
+    if(ele === PRES && uf === "br" && cargo === "0001") recordHistory("br",target[key]);
+    if(ele === EST && uf === "mg" && cargo === "0005") recordHistory("senMG",target[key]);
+  }
   catch(e){ target[key] = target[key] && !target[key].error ? {...target[key],stale:e.message} : {error:e.message}; }
 }
 
