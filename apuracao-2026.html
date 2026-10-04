@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apuração 2026</title>
+<meta name="theme-color" content="#18212e">
+<meta name="application-name" content="Apuração 2026">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Apuração 2026">
+<link rel="manifest" href="apuracao-2026.webmanifest">
+<link rel="icon" href="apuracao-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="apuracao-icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap" rel="stylesheet">
@@ -81,6 +89,18 @@ footer a{color:inherit}
 .share{background:var(--ink);color:var(--bg);font-weight:700}
 .share[disabled],.refresh[disabled]{opacity:.55;cursor:default}
 .share-note{min-height:1.3em;color:var(--soft);font-size:.8rem;text-align:center;margin:-4px 0 10px}
+.install-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 14px;text-align:center}
+.install-card h2{font-size:1rem;margin:0 0 4px}
+.install-card p{color:var(--soft);font-size:.85rem;margin:0 0 10px}
+.install-button{padding:10px 14px;border:1px solid var(--ink);border-radius:7px;background:var(--ink);color:var(--bg);font:inherit;font-weight:700;cursor:pointer}
+.install-modal[hidden]{display:none}
+.install-modal{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.55);display:grid;place-items:end center;padding:16px}
+.install-sheet{width:min(100%,520px);background:var(--card);color:var(--ink);border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.install-sheet h2{margin:0 0 8px}
+.install-sheet ol{padding-left:22px;margin:12px 0 18px}
+.install-sheet li{margin:8px 0}
+.install-close{width:100%;padding:11px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+@media (display-mode:standalone){.install-card{display:none}}
 .history{padding-bottom:14px}
 .history-change{font-weight:700;margin:8px 0}
 .history-chart{display:block;width:100%;height:auto;margin:10px 0;color:var(--soft)}
@@ -151,6 +171,22 @@ details.explanation summary{cursor:pointer;padding:6px 0}
     <button class="share" id="share" type="button" disabled>Compartilhar resumo</button>
   </div>
   <div class="share-note" id="share-note" role="status" aria-live="polite"></div>
+  <section class="install-card" id="install-card">
+    <h2>Instalar como app</h2>
+    <p>Abra pela Tela de Início com o nome Apuração 2026 e sem a barra do navegador.</p>
+    <button class="install-button" id="install-button" type="button">Adicionar à Tela de Início</button>
+  </section>
+  <div class="install-modal" id="install-modal" hidden role="dialog" aria-modal="true" aria-labelledby="install-title">
+    <div class="install-sheet">
+      <h2 id="install-title">Adicionar no iPhone</h2>
+      <ol>
+        <li>Toque em <strong>Compartilhar</strong> — o quadrado com uma seta para cima.</li>
+        <li>Role as opções e toque em <strong>Adicionar à Tela de Início</strong>.</li>
+        <li>Confirme o nome <strong>Apuração 2026</strong> e toque em <strong>Adicionar</strong>.</li>
+      </ol>
+      <button class="install-close" id="install-close" type="button">Entendi</button>
+    </div>
+  </div>
   <footer>Painel independente com dados do <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">TSE</a>. Brasil e Minas: consultas a cada minuto; estados: a cada 2 minutos. Horários de Brasília. Parcial não é resultado final.</footer>
 </div>
 
@@ -504,6 +540,29 @@ function renderUF(){
 }
 
 
+
+let installPrompt=null;
+function isStandalone(){
+  return matchMedia("(display-mode: standalone)").matches || navigator.standalone===true;
+}
+function updateInstallCard(){
+  document.getElementById("install-card").hidden=isStandalone();
+}
+function openInstall(){
+  if(installPrompt){
+    installPrompt.prompt();
+    installPrompt.userChoice.finally(()=>{installPrompt=null;updateInstallCard();});
+    return;
+  }
+  const modal=document.getElementById("install-modal");
+  modal.hidden=false;
+  document.getElementById("install-close").focus();
+}
+function closeInstall(){
+  document.getElementById("install-modal").hidden=true;
+  document.getElementById("install-button").focus();
+}
+
 function topLines(d,limit){
   if(!d || d.error) return [];
   return d.cands.filter(c=>c.valido !== false && c.votos>0).slice(0,limit).map((c,i)=>
@@ -676,6 +735,14 @@ setInterval(tick, 60000);
 setInterval(tickStates, 120000);
 document.getElementById("refresh").addEventListener("click", refreshAll);
 document.getElementById("share").addEventListener("click", shareResults);
+document.getElementById("install-button").addEventListener("click",openInstall);
+document.getElementById("install-close").addEventListener("click",closeInstall);
+document.getElementById("install-modal").addEventListener("click",e=>{if(e.target.id==="install-modal") closeInstall();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!document.getElementById("install-modal").hidden) closeInstall();});
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;updateInstallCard();});
+window.addEventListener("appinstalled",()=>{installPrompt=null;updateInstallCard();});
+updateInstallCard();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("apuracao-sw.js").catch(()=>{});
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshAll(); });
 </script>
 </body>
