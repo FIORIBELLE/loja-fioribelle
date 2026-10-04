@@ -77,6 +77,11 @@ select{font:inherit;padding:6px 8px;border-radius:7px;border:1px solid var(--lin
 footer{color:var(--soft);font-size:.8rem;text-align:center;padding:10px 0 24px}
 footer a{color:inherit}
 .refresh{display:block;margin:0 auto 12px;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.region-group{margin-bottom:26px}
+.region-title{font-size:1.3rem;margin:20px 0 8px}
+.region-summary{padding-bottom:14px}
+.region-summary .scenario-result{margin-top:0}
+.region-summary .sub:last-child{margin-bottom:0}
 .scenario{padding-bottom:14px}
 .scenario-result{font-size:1.25rem;font-weight:800;margin:8px 0}
 .threshold{position:relative;height:12px;background:var(--track);border-radius:4px;margin:12px 0 6px;overflow:hidden}
@@ -101,6 +106,7 @@ footer a{color:inherit}
 
   <section id="tab-br"></section>
   <section id="tab-uf" hidden>
+    <p class="notice">Presidente por região: soma dos votos válidos divulgados nos estados. Cada região mostra seu líder na parcial; os horários das consultas podem diferir.</p>
     <div class="tools">
       <label for="ord">Ordenar por</label>
       <select id="ord">
@@ -121,6 +127,13 @@ footer a{color:inherit}
 const BASE = "https://resultados.tse.jus.br/oficial/ele2026";
 const PRES = "6257", EST = "6259";
 const UFS = {ac:"Acre",al:"Alagoas",ap:"Amapá",am:"Amazonas",ba:"Bahia",ce:"Ceará",df:"Distrito Federal",es:"Espírito Santo",go:"Goiás",ma:"Maranhão",mt:"Mato Grosso",ms:"Mato Grosso do Sul",mg:"Minas Gerais",pa:"Pará",pb:"Paraíba",pr:"Paraná",pe:"Pernambuco",pi:"Piauí",rj:"Rio de Janeiro",rn:"Rio Grande do Norte",rs:"Rio Grande do Sul",ro:"Rondônia",rr:"Roraima",sc:"Santa Catarina",sp:"São Paulo",se:"Sergipe",to:"Tocantins",zz:"Exterior"};
+const REGIONS = [
+  {nome:"Norte",ufs:["ac","ap","am","pa","ro","rr","to"]},
+  {nome:"Nordeste",ufs:["al","ba","ce","ma","pb","pe","pi","rn","se"]},
+  {nome:"Centro-Oeste",ufs:["df","go","mt","ms"]},
+  {nome:"Sudeste",ufs:["es","mg","rj","sp"]},
+  {nome:"Sul",ufs:["pr","rs","sc"]}
+];
 const state = { br:null, mg:{gov:null,sen:null}, uf:{}, open:new Set(), tab:"br" };
 
 const url = (ele, uf, cargo) => `${BASE}/${ele}/dados/${uf}/${uf}-c${cargo}-e00${ele}-u.json`;
@@ -147,13 +160,15 @@ function parse(d){
   if(!Array.isArray(d.carg) || !d.s) throw new Error("Resposta do TSE em formato inesperado.");
   const cands = [];
   (d.carg?.[0]?.agr || []).forEach(a => (a.par||[]).forEach(p => (p.cand||[]).forEach(k => {
-    cands.push({ nome:k.nmu || k.nm, part:p.sg, votos:+k.vap || 0, pct:num(k.pvapn || k.pvap), eleito:k.e === "s", st:k.st || "" });
+    cands.push({ id:String(k.n || k.sqcand || k.nmu || k.nm), valido:!k.dvt || k.dvt === "Válido", nome:k.nmu || k.nm, part:p.sg, votos:+k.vap || 0, pct:num(k.pvapn || k.pvap), eleito:k.e === "s", st:k.st || "" });
   })));
   cands.sort((a,b) => b.votos - a.votos);
   return {
     cands,
     apurado: num(d.s?.pstn || d.s?.pst),
     eleitores: +(d.e?.te || 0),
+    secoesTotal: +(d.s?.ts || 0),
+    secoesApuradas: +(d.s?.st || 0),
     hora: [d.dt || d.dg, d.ht || d.hg].filter(Boolean).join(" às "),
     cargo: d.carg?.[0]?.nmn || ""
   };
@@ -230,32 +245,75 @@ function renderMG(){
   el.innerHTML = h;
 }
 
+
+function aggregateRegion(region){
+  const totals = new Map();
+  let received = 0, stale = 0, sections = 0, counted = 0;
+  for(const k of region.ufs){
+    const d = state.uf[k];
+    if(!d || d.error) continue;
+    received++;
+    if(d.stale) stale++;
+    sections += d.secoesTotal || 0;
+    counted += d.secoesApuradas || 0;
+    for(const c of d.cands){
+      if(c.valido === false) continue;
+      const id = c.id || c.nome;
+      const item = totals.get(id) || {id,nome:c.nome,part:c.part,votos:0,eleito:false,st:""};
+      item.votos += c.votos;
+      totals.set(id,item);
+    }
+  }
+  const cands = [...totals.values()].sort((a,b) => b.votos-a.votos || a.nome.localeCompare(b.nome,"pt-BR"));
+  const validVotes = cands.reduce((sum,c) => sum + c.votos, 0);
+  cands.forEach(c => { c.pct = validVotes ? 100*c.votos/validVotes : 0; });
+  return {cands,validVotes,received,stale,sections,counted};
+}
+
+function regionSummary(region){
+  const d = aggregateRegion(region);
+  const leaders = d.cands.filter(c => c.votos > 0 && c.votos === d.cands[0]?.votos);
+  let headline = "Aguardando votos divulgados";
+  if(leaders.length === 1) headline = esc(leaders[0].nome) + " lidera " + (d.received === region.ufs.length ? "a parcial regional" : "nos estados disponíveis");
+  if(leaders.length > 1) headline = "Empate na liderança da parcial";
+  const coverage = d.received === region.ufs.length ? "Dados dos " + d.received + " estados recebidos." : "Resumo incompleto: dados de " + d.received + " dos " + region.ufs.length + " estados.";
+  return `<div class="block region-summary">
+    <div class="scenario-result">${headline}</div>
+    <div class="sub">${coverage}${d.stale ? " " + d.stale + " estado(s) com consulta anterior após falha de atualização." : ""}</div>
+    ${d.validVotes ? candRows(d,3) : '<div class="err">Sem votos válidos nas consultas disponíveis.</div>'}
+    <div class="sub">${fmt(d.validVotes)} votos válidos somados.${d.sections ? " " + (100*d.counted/d.sections).toFixed(2).replace(".",",") + "% das seções dos estados disponíveis totalizadas." : ""} Percentuais calculados sobre a soma de votos, sem fazer média entre estados.</div>
+  </div>`;
+}
+
+function stateCard(k){
+  const d = state.uf[k];
+  const open = state.open.has(k);
+  let inner;
+  if(!d) inner = '<div class="uf-ap">Buscando…</div>';
+  else if(d.error) inner = `<div class="uf-ap">${esc(d.error)}</div>`;
+  else {
+    const [a, b] = d.cands;
+    inner = a ? `
+      <div class="uf-duel"><span>${esc(a.nome)} <b>${a.pct.toFixed(1).replace(".",",")}%</b></span>${b?`<span>${esc(b.nome)} <b>${b.pct.toFixed(1).replace(".",",")}%</b></span>`:""}</div>
+      <div class="split"><span class="a" style="width:${a.pct}%"></span>${b?`<span class="b" style="width:${b.pct}%"></span>`:""}</div>
+      ${open ? `<div class="uf-body">${candRows(d)}<div class="sub">Dados de ${esc(d.hora)}</div></div>` : ""}` : '<div class="uf-ap">Sem votos divulgados ainda.</div>';
+  }
+  return `<div class="uf" tabindex="0" role="button" aria-expanded="${open}" data-uf="${k}">
+    <div class="uf-head"><span class="uf-name">${UFS[k]}</span><span class="uf-ap">${d && !d.error ? d.apurado.toFixed(1).replace(".",",")+"% apurado" : ""}</span></div>
+    ${notice(d)}${inner}</div>`;
+}
+
 function renderUF(){
   const ord = document.getElementById("ord").value;
-  const keys = Object.keys(UFS);
-  keys.sort((a,b) => {
+  const sorter = (a,b) => {
     const A = state.uf[a], B = state.uf[b];
     if(ord === "apurado") return (B?.apurado||0) - (A?.apurado||0);
     if(ord === "eleitores") return (B?.eleitores||0) - (A?.eleitores||0);
     return UFS[a].localeCompare(UFS[b], "pt-BR");
-  });
-  document.getElementById("uf-list").innerHTML = keys.map(k => {
-    const d = state.uf[k];
-    const open = state.open.has(k);
-    let inner;
-    if(!d) inner = '<div class="uf-ap">Buscando…</div>';
-    else if(d.error) inner = `<div class="uf-ap">${esc(d.error)}</div>`;
-    else {
-      const [a, b] = d.cands;
-      inner = a ? `
-        <div class="uf-duel"><span>${esc(a.nome)} <b>${a.pct.toFixed(1).replace(".",",")}%</b></span>${b?`<span>${esc(b.nome)} <b>${b.pct.toFixed(1).replace(".",",")}%</b></span>`:""}</div>
-        <div class="split"><span class="a" style="width:${a.pct}%"></span>${b?`<span class="b" style="width:${b.pct}%"></span>`:""}</div>
-        ${open ? `<div class="uf-body">${candRows(d)}</div>` : ""}` : '<div class="uf-ap">Sem votos divulgados ainda.</div>';
-    }
-    return `<div class="uf" tabindex="0" role="button" aria-expanded="${open}" data-uf="${k}">
-      <div class="uf-head"><span class="uf-name">${UFS[k]}</span><span class="uf-ap">${d && !d.error ? d.apurado.toFixed(1).replace(".",",")+"% apurado" : ""}</span></div>
-      ${notice(d)}${inner}</div>`;
-  }).join("");
+  };
+  document.getElementById("uf-list").innerHTML = REGIONS.map(region =>
+    `<section class="region-group"><h2 class="region-title">${region.nome}</h2>${regionSummary(region)}${[...region.ufs].sort(sorter).map(stateCard).join("")}</section>`
+  ).join("") + '<section class="region-group"><h2 class="region-title">Exterior</h2><div class="notice">Votos no exterior são exibidos separadamente das cinco regiões.</div>' + stateCard("zz") + '</section>';
 }
 
 function render(){ renderBR(); renderUF(); renderMG(); }
